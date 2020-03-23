@@ -1,13 +1,10 @@
 #! /usr/bin/python
 
-# Usage patterns:
-#
-#   $ engvm_agent --cron
-#   $ engvm_agent --keep-alive 8h
-
 import argparse
-import sys
+import os
 import sqlite3
+import subprocess
+import sys
 import time
 
 def parseKeepAlive(str):
@@ -35,18 +32,84 @@ def parseKeepAlive(str):
   if value > 7 * 24 * 60 * 60:
     sys.stderr.write('Keep-alive value > 7d not supported\n')
     sys.exit(100)
-  return int(value)
+  return int(time.time() + value)
 
+def numSshClients():
+  return int(subprocess.check_output('who | wc -l', shell=True).rstrip())
+
+def uptime():
+  return int(float(open('/proc/uptime').read().split(' ')[0]))
+
+# The schemaSql needs to be idempotent since it is executed on every
+# invocation of this command.
+schemaSql = '''
+  create table if not exists cron (timestamp integer, num_users integer);
+  create table if not exists keep_alive (
+      id integer,
+      until integer,
+      unique(id)
+  );
+  insert or ignore into keep_alive values (1, -1);
+'''
+
+def getDb():
+  dbFile = '/tmp/engvm_cron.sqlite'
+  # Create the file if it does not already exist and make it readable and
+  # writable by all.
+  if not os.path.exists(dbFile):
+    subprocess.check_call('sudo touch %s' % dbFile, shell = True)
+    subprocess.check_call('sudo chmod 666 %s' % dbFile, shell = True)
+  conn = sqlite3.connect(dbFile)
+  conn.executescript(schemaSql)
+  conn.commit()
+  return conn
+
+# This function initiates machine shutdown if both the following conditions
+# are true:
+#   - 2 hours have passed since the last time a users ssh-ed into the engvm
+#   - current time is greater than user requested keep-alive limit
+# NOTE: runCron always runs as root
 def runCron():
-  print 'runCron'
+  conn = getDb()
 
+  # Determine the present state of the system
+  now = int(time.time())
+  numClients = numSshClients()
+  keepAliveLimit = conn.execute(
+      'select until from keep_alive').fetchall()[0][0]
+  print 'timestamp=%d numClients=%d keepAliveLimit=%d' % (
+      now, numClients, keepAliveLimit)
+
+  # First record the current state into the db.
+  conn.execute('insert into cron values (%d, %d)' % (now, numClients))
+  conn.commit()
+
+  # Determine time since last user
+  rows = conn.execute(
+      'select max(timestamp) from cron where num_users > 0').fetchall()
+  # Interestingly this query returns a single row with None when there
+  # should really be no rows. We handle all three cases.
+  if len(rows) == 0 or rows[0][0] == None:
+    timeSinceLastUser = uptime()
+  else:
+    timeSinceLastUser = now - int(rows[0][0])
+
+  print 'timeSinceLastUser=%d' % timeSinceLastUser
+  if timeSinceLastUser > 2 * 60 * 60 and keepAliveLimit < now:
+    subprocess.check_call(['sudo', 'shutdown'])
+  conn.close()
+
+# Updates the keep alive limit in the db
 def runKeepAlive(keepAlive):
-  print 'runKeepAlive: %d' % keepAlive
+  conn = getDb()
+  conn.execute('update keep_alive set until = %d' % keepAlive)
+  conn.commit()
+  conn.close()
 
 def argParser():
   parser = argparse.ArgumentParser(
     prog = 'engvm_agent',
-    description = 'TODO')
+    description = 'An agent that periodically runs on every engvm')
   parser.add_argument(
     '--cron', dest = 'cron', action = 'store_true',
     help = 'Executes engvm_agent in cron mode (not for direct use)')
@@ -68,7 +131,7 @@ def main(argv):
   elif keepAlive >= 0:
     runKeepAlive(keepAlive)
   else:
-    sys.stderr.write("Specify one of --cron or --keep-alive\n")
+    sys.stderr.write('Specify one of --cron or --keep-alive\n')
     parser.print_help(sys.stderr)
     sys.exit(100)
 
