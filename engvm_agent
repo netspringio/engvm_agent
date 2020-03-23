@@ -1,0 +1,76 @@
+#! /usr/bin/python
+
+# Usage patterns:
+#
+#   $ engvm_agent --cron
+#   $ engvm_agent --keep-alive 8h
+
+import argparse
+import sys
+import sqlite3
+import time
+
+def parseKeepAlive(str):
+  if str == '':
+    return -1
+  value = -1
+  try:
+    value = int(str[:-1])
+  except:
+    sys.stderr.write('Invalid keep-alive value %s\n' % str)
+    sys.exit(100)
+  unit = str[-1]
+  if unit == 'm':
+    value = value * 60
+  elif unit == 'h':
+    value = value * 60 * 60
+  elif unit == 'd':
+    value = value * 24 * 60 * 60
+  else:
+    sys.stderr.write('Invalid keep-alive value %s\n' % str)
+    sys.exit(100)
+  if value < 0:
+    sys.stderr.write('Negative keep-alive value not supported\n')
+    sys.exit(100)
+  if value > 7 * 24 * 60 * 60:
+    sys.stderr.write('Keep-alive value > 7d not supported\n')
+    sys.exit(100)
+  return int(value)
+
+def runCron():
+  print 'runCron'
+
+def runKeepAlive(keepAlive):
+  print 'runKeepAlive: %d' % keepAlive
+
+def argParser():
+  parser = argparse.ArgumentParser(
+    prog = 'engvm_agent',
+    description = 'TODO')
+  parser.add_argument(
+    '--cron', dest = 'cron', action = 'store_true',
+    help = 'Executes engvm_agent in cron mode (not for direct use)')
+  parser.set_defaults(cron = False)
+  parser.add_argument(
+    '--keep-alive', dest = 'keepAlive', action = 'store',
+    help = 'Disables engvm auto-shutdown for a specified amount of ' +
+           'time. Example: 2h/60m/3d => 2 hours/100 mins/3 days ' +
+           'respectively')
+  parser.set_defaults(keepAlive = '')
+  return parser
+  
+def main(argv):
+  parser = argParser()
+  args = parser.parse_args(args = argv)
+  keepAlive = parseKeepAlive(args.keepAlive)
+  if args.cron:
+    runCron()
+  elif keepAlive >= 0:
+    runKeepAlive(keepAlive)
+  else:
+    sys.stderr.write("Specify one of --cron or --keep-alive\n")
+    parser.print_help(sys.stderr)
+    sys.exit(100)
+
+if __name__ == '__main__':
+  main(sys.argv[1:])
