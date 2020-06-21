@@ -7,12 +7,12 @@ import subprocess
 import sys
 import time
 
-def parseKeepAlive(str):
+def parseKeepAlive(str, force):
   if str == '':
     return -1
   value = -1
   try:
-    value = int(str[:-1])
+    value = long(str[:-1])
   except:
     sys.stderr.write('Invalid keep-alive value %s\n' % str)
     sys.exit(100)
@@ -29,16 +29,16 @@ def parseKeepAlive(str):
   if value < 0:
     sys.stderr.write('Negative keep-alive value not supported\n')
     sys.exit(100)
-  if value > 7 * 24 * 60 * 60:
+  if not force and value > 7 * 24 * 60 * 60:
     sys.stderr.write('Keep-alive value > 7d not supported\n')
     sys.exit(100)
-  return int(time.time() + value)
+  return long(time.time() + value)
 
 def numSshClients():
-  return int(subprocess.check_output('who | wc -l', shell=True).rstrip())
+  return long(subprocess.check_output('who | wc -l', shell=True).rstrip())
 
 def uptime():
-  return int(float(open('/proc/uptime').read().split(' ')[0]))
+  return long(float(open('/proc/uptime').read().split(' ')[0]))
 
 # The schemaSql needs to be idempotent since it is executed on every
 # invocation of this command.
@@ -73,7 +73,7 @@ def runCron():
   conn = getDb()
 
   # Determine the present state of the system
-  now = int(time.time())
+  now = long(time.time())
   numClients = numSshClients()
   keepAliveLimit = conn.execute(
       'select until from keep_alive').fetchall()[0][0]
@@ -92,7 +92,7 @@ def runCron():
   if len(rows) == 0 or rows[0][0] == None:
     timeSinceLastUser = uptime()
   else:
-    timeSinceLastUser = now - int(rows[0][0])
+    timeSinceLastUser = now - long(rows[0][0])
 
   print 'timeSinceLastUser=%d' % timeSinceLastUser
   if timeSinceLastUser > 2 * 60 * 60 and keepAliveLimit < now:
@@ -120,12 +120,16 @@ def argParser():
            'time. Example: 2h/60m/3d => 2 hours/100 mins/3 days ' +
            'respectively')
   parser.set_defaults(keepAlive = '')
+  parser.add_argument(
+    '--force', dest = 'force', action = 'store_true',
+    help = 'Enables unlimited keep alive')
+  parser.set_defaults(force = False)
   return parser
   
 def main(argv):
   parser = argParser()
   args = parser.parse_args(args = argv)
-  keepAlive = parseKeepAlive(args.keepAlive)
+  keepAlive = parseKeepAlive(args.keepAlive, args.force)
   if args.cron:
     runCron()
   elif keepAlive >= 0:
