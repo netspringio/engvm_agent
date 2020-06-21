@@ -35,7 +35,9 @@ def parseKeepAlive(str, force):
   return long(time.time() + value)
 
 def numSshClients():
-  return long(subprocess.check_output('who | wc -l', shell=True).rstrip())
+  return long(
+      subprocess.check_output('ss | grep -i ssh | wc -l',
+      shell=True).rstrip())
 
 def uptime():
   return long(float(open('/proc/uptime').read().split(' ')[0]))
