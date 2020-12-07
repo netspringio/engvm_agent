@@ -35,10 +35,13 @@ def parseKeepAlive(str, force):
   return long(time.time() + value)
 
 def numSshClients():
-  # We dump the output of ss here for logging purposes
-  subprocess.check_call('ss | grep -i ssh', shell=True)
-  return long(
-      subprocess.check_output('ss | grep -i ssh | grep ESTAB | wc -l',
+  # We dump the output of who here for logging purposes
+  subprocess.check_call("who --ips", shell=True)
+  # We filter the output of who to include lines that list ips to exclude
+  # screen / tmux sessions.
+  return long(subprocess.check_output(
+      "who --ips | awk '{print $5}' | " +
+      "grep -E '^[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*$' | wc -l",
       shell=True).rstrip())
 
 def uptime():
