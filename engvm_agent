@@ -35,6 +35,8 @@ def parseKeepAlive(str, force):
   return long(time.time() + value)
 
 def numSshClients():
+  # We dump the output of ss here for logging purposes
+  subprocess.check_call('ss | grep -i ssh', shell=True)
   return long(
       subprocess.check_output('ss | grep -i ssh | grep ESTAB | wc -l',
       shell=True).rstrip())
