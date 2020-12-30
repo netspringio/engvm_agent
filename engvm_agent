@@ -12,7 +12,7 @@ def parseKeepAlive(str, force):
     return -1
   value = -1
   try:
-    value = long(str[:-1])
+    value = int(str[:-1])
   except:
     sys.stderr.write('Invalid keep-alive value %s\n' % str)
     sys.exit(100)
@@ -32,20 +32,20 @@ def parseKeepAlive(str, force):
   if not force and value > 7 * 24 * 60 * 60:
     sys.stderr.write('Keep-alive value > 7d not supported\n')
     sys.exit(100)
-  return long(time.time() + value)
+  return int(time.time() + value)
 
 def numSshClients():
   # We dump the output of who here for logging purposes
   subprocess.check_call("who --ips", shell=True)
   # We filter the output of who to include lines that list ips to exclude
   # screen / tmux sessions.
-  return long(subprocess.check_output(
+  return int(subprocess.check_output(
       "who --ips | awk '{print $5}' | " +
       "grep -E '^[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*$' | wc -l",
       shell=True).rstrip())
 
 def uptime():
-  return long(float(open('/proc/uptime').read().split(' ')[0]))
+  return int(float(open('/proc/uptime').read().split(' ')[0]))
 
 # The schemaSql needs to be idempotent since it is executed on every
 # invocation of this command.
@@ -80,12 +80,12 @@ def runCron():
   conn = getDb()
 
   # Determine the present state of the system
-  now = long(time.time())
+  now = int(time.time())
   numClients = numSshClients()
   keepAliveLimit = conn.execute(
       'select until from keep_alive').fetchall()[0][0]
-  print 'timestamp=%d numClients=%d keepAliveLimit=%d' % (
-      now, numClients, keepAliveLimit)
+  print('timestamp=%d numClients=%d keepAliveLimit=%d' % (
+      now, numClients, keepAliveLimit))
 
   # First record the current state into the db.
   conn.execute('insert into cron values (%d, %d)' % (now, numClients))
@@ -99,9 +99,9 @@ def runCron():
   if len(rows) == 0 or rows[0][0] == None:
     timeSinceLastUser = uptime()
   else:
-    timeSinceLastUser = now - long(rows[0][0])
+    timeSinceLastUser = now - int(rows[0][0])
 
-  print 'timeSinceLastUser=%d' % timeSinceLastUser
+  print('timeSinceLastUser=%d' % timeSinceLastUser)
   if timeSinceLastUser > 2 * 60 * 60 and keepAliveLimit < now:
     subprocess.check_call(['sudo', 'shutdown'])
   conn.close()
